@@ -16,3 +16,6 @@ live/server:
 # start all watch processes in parallel.
 dev: 
 	make -j2 live/templ live/server
+
+release/linux:
+	GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o nood
