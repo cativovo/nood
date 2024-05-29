@@ -57,6 +57,8 @@ func Print(n Node, indent string) {
 	}
 }
 
+var tree Tree
+
 func main() {
 	root := "./media/"
 	fileSystem := os.DirFS(root)
@@ -66,7 +68,6 @@ func main() {
 		Path:     ".",
 		IsDir:    true,
 	}
-	var tree Tree
 	tree.Node = baseNode
 
 	err := fs.WalkDir(fileSystem, ".", func(path string, d fs.DirEntry, err error) error {
@@ -89,30 +90,37 @@ func main() {
 
 	e := echo.New()
 	e.Static("/media", "media")
-	e.GET("/test/*", func(c echo.Context) error {
-		tree.mu.Lock()
-		defer tree.mu.Unlock()
+	e.GET("/", func(ctx echo.Context) error {
+		return ctx.Redirect(http.StatusMovedPermanently, "/home/")
+	})
+	e.GET("/home/*", homeHandler)
+	e.Logger.Fatal(e.Start("127.0.0.1:9000"))
+}
 
-		var node *Node
+func homeHandler(c echo.Context) error {
+	tree.mu.Lock()
+	defer tree.mu.Unlock()
 
-		paramValues := strings.Split(c.ParamValues()[0], "/")
+	var node *Node
 
-		if paramValues[0] != "" {
-			node = tree.Node.Children[paramValues[0]]
+	paramValues := strings.Split(c.ParamValues()[0], "/")
 
-			if len(paramValues) > 1 {
-				for _, v := range paramValues[1:] {
-					node = node.Children[v]
-					if !node.IsDir {
-						break
-					}
+	if paramValues[0] != "" {
+		node = tree.Node.Children[paramValues[0]]
+
+		if len(paramValues) > 1 {
+			for _, v := range paramValues[1:] {
+				node = node.Children[v]
+				if !node.IsDir {
+					break
 				}
 			}
-		} else {
-			node = &tree.Node
 		}
+	} else {
+		node = &tree.Node
+	}
 
-		return c.JSON(http.StatusOK, node)
-	})
-	e.Logger.Fatal(e.Start(":1323"))
+	return c.JSON(http.StatusOK, node)
+}
+
 }
