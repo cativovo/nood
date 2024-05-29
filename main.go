@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"mime"
 	"net/http"
 	"os"
+	"path"
 	"strings"
 	"sync"
 
@@ -18,31 +20,39 @@ type Node struct {
 	Name     string
 	Path     string
 	IsDir    bool
+	MimeType string
 }
 
-func (n *Node) Add(path string, d fs.DirEntry) {
-	parts := strings.Split(path, "/")
+func (n *Node) Add(p string, d fs.DirEntry) {
+	parts := strings.Split(p, "/")
+	var mimeType string
+
+	if !d.IsDir() {
+		mimeType = mime.TypeByExtension(path.Ext(p))
+	}
+
 	node := Node{
 		Children: make(map[string]*Node),
 		Name:     d.Name(),
-		Path:     path,
+		Path:     p,
 		IsDir:    d.IsDir(),
+		MimeType: mimeType,
 	}
 
 	if len(parts) == 1 {
-		n.Children[path] = &node
+		n.Children[p] = &node
 		return
 	}
 
-	p := n.Children[parts[0]]
+	c := n.Children[parts[0]]
 
 	for _, part := range parts[1:] {
-		if p.Children[part] == nil {
-			p.Children[part] = &node
+		if c.Children[part] == nil {
+			c.Children[part] = &node
 			break
 		}
 
-		p = p.Children[part]
+		c = c.Children[part]
 	}
 }
 
@@ -71,16 +81,16 @@ func main() {
 	}
 	tree.Node = baseNode
 
-	err := fs.WalkDir(fileSystem, ".", func(path string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(fileSystem, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		if path == "." {
+		if p == "." {
 			return nil
 		}
 
-		tree.Node.Add(path, d)
+		tree.Node.Add(p, d)
 		return nil
 	})
 	if err != nil {
@@ -121,16 +131,16 @@ func homeHandler(c echo.Context) error {
 		node = &tree.Node
 	}
 
-	return c.JSON(http.StatusOK, node)
+	return Render(c, http.StatusOK, Home(node, strings.TrimSuffix(c.Request().URL.Path, "/")))
 }
 
-func Render(ctx echo.Context, statusCode int, t templ.Component) error {
+func Render(c echo.Context, statusCode int, t templ.Component) error {
 	buf := templ.GetBuffer()
 	defer templ.ReleaseBuffer(buf)
 
-	if err := t.Render(ctx.Request().Context(), buf); err != nil {
+	if err := t.Render(c.Request().Context(), buf); err != nil {
 		return err
 	}
 
-	return ctx.HTML(statusCode, buf.String())
+	return c.HTML(statusCode, buf.String())
 }
