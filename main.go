@@ -10,7 +10,6 @@ import (
 	"os"
 	"path"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -153,24 +152,11 @@ func homeHandler(c echo.Context) error {
 	})
 
 	video := c.QueryParam("video")
-	timestampParam := c.QueryParam("timestamp")
-
-	var timestamp float64
-
-	if timestampParam != "" {
-		num, err := strconv.ParseFloat(timestampParam, 64)
-		if err != nil {
-			c.Logger().Warn(err)
-		}
-
-		timestamp = num
-	}
 
 	homeProps := HomeProps{
-		Nodes:     nodes,
-		Path:      strings.TrimSuffix(c.Request().URL.Path, "/"),
-		Video:     video,
-		Timestamp: timestamp,
+		Nodes: nodes,
+		Path:  strings.TrimSuffix(c.Request().URL.Path, "/"),
+		Video: video,
 	}
 
 	return Render(c, http.StatusOK, Home(homeProps))

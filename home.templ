@@ -4,10 +4,9 @@ import "fmt"
 import "strings"
 
 type HomeProps struct {
-	Nodes     []Node
-	Path      string
-	Video     string
-	Timestamp float64
+	Nodes []Node
+	Path  string
+	Video string
 }
 
 func getPath(currentPath, video string) string {
@@ -53,6 +52,20 @@ templ Home(props HomeProps) {
 			<title>Document</title>
 			<link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet"/>
 			<style>
+				*, *::before, *::after {
+					box-sizing: border-box;
+				}
+
+				* {
+					margin: 0;
+				}
+
+				main {
+					height: 100vh;
+					padding: 10px;
+					width: 100vw;
+				}
+
 				ul {
 					list-style: none;
 					padding: 0;
@@ -64,12 +77,13 @@ templ Home(props HomeProps) {
 				}
 
 				#title {
+					font-size: 18px;
 					text-align: center;
 				}
 
 				#video-container {
-					height: 426px;
-					width: 768px;
+					height: 405px;
+					width: 720px;
 					margin: 0 auto;
 				}
 
@@ -78,19 +92,19 @@ templ Home(props HomeProps) {
 					width: 100%;
 				}
 
-				#episodes-container {
-					text-align: right;
-				}
-
 				#episodes {
-					display: inline-flex;
+					display: flex;
 					flex-direction: column;
 					gap: 4px;
+					width: 680px;
+					height: 200px;
+					overflow: scroll;
+					margin: 10px auto 0 auto;
 				}
 
 				.episode {
 					border: 1px solid black;
-					padding: 2px 4px;	
+					padding: 2px 6px;	
 				}
 
 				.episode.active {
@@ -109,71 +123,95 @@ templ Home(props HomeProps) {
 			<script src="https://unpkg.com/htmx.org@1.9.12"></script>
 		</head>
 		<body>
-			<ul id="crumbs">
-				for _, v := range getCrumbs(props.Path) {
-					<li>
-						<a href={ templ.SafeURL(v.path) }>{ v.name }/</a>
-					</li>
-				}
-			</ul>
-			if props.Video == "" {
-				<ul>
-					for _, v:= range props.Nodes {
+			<main>
+				<ul id="crumbs">
+					for _, v := range getCrumbs(props.Path) {
 						<li>
-							if v.IsDir {
-								<a hx-boost="true" href={ templ.URL(fmt.Sprintf("%s/%s", props.Path, v.Name)) }>
-									{ v.Name }
-								</a>
-							} else {
-								<a href={ templ.URL(fmt.Sprintf("%s?video=%s", props.Path, v.Name)) }>
-									{ v.Name }
-								</a>
-							}
+							<a href={ templ.SafeURL(v.path) }>{ v.name }/</a>
 						</li>
 					}
 				</ul>
-			} else {
-				<div id="video-container">
+				if props.Video == "" {
+					<ul>
+						for _, v:= range props.Nodes {
+							<li>
+								if v.IsDir {
+									<a hx-boost="true" href={ templ.URL(fmt.Sprintf("%s/%s", props.Path, v.Name)) }>
+										{ v.Name }
+									</a>
+								} else {
+									<a href={ templ.URL(fmt.Sprintf("%s?video=%s", props.Path, v.Name)) }>
+										{ v.Name }
+									</a>
+								}
+							</li>
+						}
+					</ul>
+				} else {
 					<h1 id="title">{ props.Video }</h1>
-					<video
-						id="video"
-						class="video-js"
-						controls
-						preload="auto"
-						data-timestamp={ fmt.Sprintf("%f", props.Timestamp) }
-					>
-						<source src={ templ.EscapeString(getPath(props.Path, props.Video)) } type="video/mp4"/>
-					</video>
-					<script>
-						const url = new URL(location);
+					<div id="video-container">
+						<video
+							id="video"
+							class="video-js"
+							controls
+							preload="auto"
+							data-video={ templ.EscapeString(props.Video) }
+						>
+							<source src={ templ.EscapeString(getPath(props.Path, props.Video)) } type="video/mp4"/>
+						</video>
+						<script>
+					  function timestamp(id) {
+							const key = `timestamp_${id}`
+
+							function get() {
+								const value = localStorage.getItem(key);
+								const timestamp = parseFloat(value)
+
+								if (isNaN(timestamp)) {
+									return 0
+								}
+
+								return timestamp
+							}
+
+							function set(timestamp) {
+								localStorage.setItem(key, timestamp)
+							}
+
+							return [get, set]
+						}
+
 						const videoEl = document.querySelector("#video");
+						const [getTimestamp, setTimestamp] = timestamp(videoEl.dataset.video)
 						const player = videojs(videoEl);
-						player.currentTime(parseFloat(videoEl.dataset.timestamp));
+
+						player.on("ready", function() {
+							player.currentTime(getTimestamp());
+						});
+
 						player.on("timeupdate", function() {
 							// https://docs.videojs.com/player#readyState
 							if (this.readyState() === 4) {
-								url.searchParams.set("timestamp", this.currentTime());
-								history.replaceState({}, "", url);
+								setTimestamp(this.currentTime());
 							}
 						});
 					</script>
-					<div id="episodes-container">
-						<ul id="episodes">
-							for _, v:= range props.Nodes {
-								<li
-									class={ "episode", templ.KV("active", v.Name == props.Video) }
-								>
-									if !v.IsDir {
-										<a href={ templ.URL(fmt.Sprintf("%s?video=%s", props.Path, v.Name)) }>
-											{ v.Name }
-										</a>
-									}
-								</li>
-							}
-						</ul>
 					</div>
-				</div>
-			}
+					<ul id="episodes">
+						for _, v:= range props.Nodes {
+							<li
+								class={ "episode", templ.KV("active", v.Name == props.Video) }
+							>
+								if !v.IsDir {
+									<a href={ templ.URL(fmt.Sprintf("%s?video=%s", props.Path, v.Name)) }>
+										{ v.Name }
+									</a>
+								}
+							</li>
+						}
+					</ul>
+				}
+			</main>
 		</body>
 	</html>
 }
