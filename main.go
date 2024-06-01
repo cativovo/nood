@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -151,7 +152,28 @@ func homeHandler(c echo.Context) error {
 		return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
 	})
 
-	return Render(c, http.StatusOK, Home(nodes, strings.TrimSuffix(c.Request().URL.Path, "/")))
+	video := c.QueryParam("video")
+	timestampParam := c.QueryParam("timestamp")
+
+	var timestamp float64
+
+	if timestampParam != "" {
+		num, err := strconv.ParseFloat(timestampParam, 64)
+		if err != nil {
+			c.Logger().Warn(err)
+		}
+
+		timestamp = num
+	}
+
+	homeProps := HomeProps{
+		Nodes:     nodes,
+		Path:      strings.TrimSuffix(c.Request().URL.Path, "/"),
+		Video:     video,
+		Timestamp: timestamp,
+	}
+
+	return Render(c, http.StatusOK, Home(homeProps))
 }
 
 func Render(c echo.Context, statusCode int, t templ.Component) error {

@@ -1,45 +1,179 @@
 package main
 
 import "fmt"
+import "strings"
 
-templ Home(nodes []Node, path string) {
-	<script>
-			document.addEventListener("DOMContentLoaded", (event) => {
-				document.querySelectorAll("button").forEach(button => {
-					button.addEventListener("click", function() {
-						const videoElement = document.createElement("video")
-						videoElement.controls = true
-						videoElement.width = 500
+type HomeProps struct {
+	Nodes     []Node
+	Path      string
+	Video     string
+	Timestamp float64
+}
 
-						const sourceElement = document.createElement("source")
-						sourceElement.src = this.dataset.path
-						sourceElement.type = this.dataset.mime
-						videoElement.appendChild(sourceElement)
+func getPath(currentPath, video string) string {
+	parts := strings.Split(currentPath, "/")
+	parts[1] = "media" // change 'home' to 'media'
+	return fmt.Sprintf("%s/%s", strings.Join(parts, "/"), video)
+}
 
-						const title = document.createElement("h1")
-						title.textContent = this.dataset.title
+type crumb struct {
+	name string
+	path string
+}
 
-						const container = document.createElement("div")
-						container.appendChild(title)
-						container.appendChild(videoElement)
+func getCrumbs(currentPath string) []crumb {
+	parts := strings.Split(currentPath, "/")[1:] // don't include '/home'
+	root := "/"
+	fullPath := make([]string, 0, len(parts))
+	crumbs := make([]crumb, 0, len(parts))
 
-						document.querySelector("#video-container").replaceChildren(container)
-					})
-				})
-			});
-	</script>
-	<div id="video-container"></div>
-	<ul>
-		for _, v:= range nodes {
-			<li>
-				if v.IsDir {
-					<a href={ templ.URL(fmt.Sprintf("%s/%s", path, v.Name)) }>
-						{ v.Name }
-					</a>
-				} else {
-					<button data-title={ templ.EscapeString(v.Name) } data-mime={ templ.EscapeString(v.MimeType) } data-path={ templ.EscapeString(fmt.Sprintf("/media/%s", v.Path)) }>{ v.Name }</button>
-				}
-			</li>
+	for i, v := range parts {
+		fullPath = append(fullPath, v)
+		path := root + strings.Join(fullPath, "/")
+
+		if i == 0 {
+			path += "/"
 		}
-	</ul>
+
+		crumbs = append(crumbs, crumb{
+			name: v,
+			path: path,
+		})
+	}
+
+	return crumbs
+}
+
+templ Home(props HomeProps) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>Document</title>
+			<link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet"/>
+			<style>
+				ul {
+					list-style: none;
+					padding: 0;
+				}
+
+				#crumbs {
+					display: flex;
+					gap: 2px;
+				}
+
+				#title {
+					text-align: center;
+				}
+
+				#video-container {
+					height: 426px;
+					width: 768px;
+					margin: 0 auto;
+				}
+
+				#video {
+					height: 100%;
+					width: 100%;
+				}
+
+				#episodes-container {
+					text-align: right;
+				}
+
+				#episodes {
+					display: inline-flex;
+					flex-direction: column;
+					gap: 4px;
+				}
+
+				.episode {
+					border: 1px solid black;
+					padding: 2px 4px;	
+				}
+
+				.episode.active {
+					background: #5bc0de;
+					border-color: #007bff;
+				}
+
+				.episode a {
+					color: inherit;
+					display: block;
+					text-decoration: none;
+				}
+
+			</style>
+			<script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
+			<script src="https://unpkg.com/htmx.org@1.9.12"></script>
+		</head>
+		<body>
+			<ul id="crumbs">
+				for _, v := range getCrumbs(props.Path) {
+					<li>
+						<a href={ templ.SafeURL(v.path) }>{ v.name }/</a>
+					</li>
+				}
+			</ul>
+			if props.Video == "" {
+				<ul>
+					for _, v:= range props.Nodes {
+						<li>
+							if v.IsDir {
+								<a hx-boost="true" href={ templ.URL(fmt.Sprintf("%s/%s", props.Path, v.Name)) }>
+									{ v.Name }
+								</a>
+							} else {
+								<a href={ templ.URL(fmt.Sprintf("%s?video=%s", props.Path, v.Name)) }>
+									{ v.Name }
+								</a>
+							}
+						</li>
+					}
+				</ul>
+			} else {
+				<div id="video-container">
+					<h1 id="title">{ props.Video }</h1>
+					<video
+						id="video"
+						class="video-js"
+						controls
+						preload="auto"
+						data-timestamp={ fmt.Sprintf("%f", props.Timestamp) }
+					>
+						<source src={ templ.EscapeString(getPath(props.Path, props.Video)) } type="video/mp4"/>
+					</video>
+					<script>
+						const url = new URL(location);
+						const videoEl = document.querySelector("#video");
+						const player = videojs(videoEl);
+						player.currentTime(parseFloat(videoEl.dataset.timestamp));
+						player.on("timeupdate", function() {
+							// https://docs.videojs.com/player#readyState
+							if (this.readyState() === 4) {
+								url.searchParams.set("timestamp", this.currentTime());
+								history.replaceState({}, "", url);
+							}
+						});
+					</script>
+					<div id="episodes-container">
+						<ul id="episodes">
+							for _, v:= range props.Nodes {
+								<li
+									class={ "episode", templ.KV("active", v.Name == props.Video) }
+								>
+									if !v.IsDir {
+										<a href={ templ.URL(fmt.Sprintf("%s?video=%s", props.Path, v.Name)) }>
+											{ v.Name }
+										</a>
+									}
+								</li>
+							}
+						</ul>
+					</div>
+				</div>
+			}
+		</body>
+	</html>
 }
