@@ -2,35 +2,42 @@ package main
 
 import "fmt"
 
-templ Home(node *Node, path string) {
+templ Home(nodes []Node, path string) {
 	<script>
 			document.addEventListener("DOMContentLoaded", (event) => {
 				document.querySelectorAll("button").forEach(button => {
 					button.addEventListener("click", function() {
-						console.log(this.dataset.path)
 						const videoElement = document.createElement("video")
 						videoElement.controls = true
 						videoElement.width = 500
+
 						const sourceElement = document.createElement("source")
 						sourceElement.src = this.dataset.path
 						sourceElement.type = this.dataset.mime
 						videoElement.appendChild(sourceElement)
 
-						document.querySelector("#video-container").replaceChildren(videoElement)
+						const title = document.createElement("h1")
+						title.textContent = this.dataset.title
+
+						const container = document.createElement("div")
+						container.appendChild(title)
+						container.appendChild(videoElement)
+
+						document.querySelector("#video-container").replaceChildren(container)
 					})
 				})
 			});
 	</script>
 	<div id="video-container"></div>
 	<ul>
-		for _, v:= range node.Children {
+		for _, v:= range nodes {
 			<li>
 				if v.IsDir {
 					<a href={ templ.URL(fmt.Sprintf("%s/%s", path, v.Name)) }>
 						{ v.Name }
 					</a>
 				} else {
-					<button data-mime={ templ.EscapeString(v.MimeType) } data-path={ templ.EscapeString(fmt.Sprintf("/media/%s", v.Path)) }>{ v.Name }</button>
+					<button data-title={ templ.EscapeString(v.Name) } data-mime={ templ.EscapeString(v.MimeType) } data-path={ templ.EscapeString(fmt.Sprintf("/media/%s", v.Path)) }>{ v.Name }</button>
 				}
 			</li>
 		}

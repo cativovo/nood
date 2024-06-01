@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
 	"io/fs"
 	"log"
@@ -8,19 +9,21 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"slices"
 	"strings"
 	"sync"
 
 	"github.com/a-h/templ"
-	"github.com/labstack/echo"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
 type Node struct {
 	Children map[string]*Node
 	Name     string
 	Path     string
-	IsDir    bool
 	MimeType string
+	IsDir    bool
 }
 
 func (n *Node) Add(p string, d fs.DirEntry) {
@@ -100,12 +103,19 @@ func main() {
 	Print(tree.Node, "")
 
 	e := echo.New()
+	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
+		Format: `{"time":"${time_rfc3339_nano}","id":"${id}","remote_ip":"${remote_ip}",` +
+			`"host":"${host}","method":"${method}","uri":"${uri}","user_agent":"${user_agent}",` +
+			`"status":${status},"error":"${error}","latency":${latency},"latency_human":"${latency_human}"` +
+			`,"bytes_in":${bytes_in},"bytes_out":${bytes_out}}` + "\n",
+		CustomTimeFormat: "2006-01-02 15:04:05.00000",
+	}))
 	e.Static("/media", "media")
 	e.GET("/", func(ctx echo.Context) error {
 		return ctx.Redirect(http.StatusMovedPermanently, "/home/")
 	})
 	e.GET("/home/*", homeHandler)
-	e.Logger.Fatal(e.Start("127.0.0.1:9000"))
+	e.Logger.Fatal(e.Start(":9000"))
 }
 
 func homeHandler(c echo.Context) error {
@@ -131,7 +141,17 @@ func homeHandler(c echo.Context) error {
 		node = &tree.Node
 	}
 
-	return Render(c, http.StatusOK, Home(node, strings.TrimSuffix(c.Request().URL.Path, "/")))
+	nodes := make([]Node, 0, len(node.Children))
+
+	for _, v := range node.Children {
+		nodes = append(nodes, *v)
+	}
+
+	slices.SortFunc(nodes, func(a, b Node) int {
+		return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
+
+	return Render(c, http.StatusOK, Home(nodes, strings.TrimSuffix(c.Request().URL.Path, "/")))
 }
 
 func Render(c echo.Context, statusCode int, t templ.Component) error {
